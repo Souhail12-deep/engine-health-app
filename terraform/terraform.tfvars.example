@@ -1,0 +1,33 @@
+# AWS Configuration
+aws_region = "us-east-1"
+project_name = "engine-health"
+environment = "prod"
+
+# VPC Configuration
+vpc_cidr = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+
+# EC2 Configuration
+instance_type = "t3.medium"
+instance_count = 2
+key_name = "engine-health-key"  # Optional - remove if not needed
+
+# S3 Configuration
+s3_bucket_name = "engine-health-models-20260227"  # Must be globally unique
+
+# Application Configuration
+app_port = 5000
+docker_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/engine-health-app:latest"  # Replace with your ECR URL
+
+# SSL Certificate (leave empty for HTTP only)
+certificate_arn = ""  # e.g., "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+
+# Tags
+tags = {
+  Project     = "engine-health"
+  ManagedBy   = "terraform"
+  Environment = "prod"
+  Owner       = "devops-team"
+}

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engine Health Monitoring System</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <i class="fas fa-cogs"></i>
+            Engine Health Monitoring System
+        </h1>
+        <p class="text-muted" style="text-align: center; margin-bottom: 30px; color: var(--text-muted);">
+            Generate and analyze engine cycle data with AI insights
+        </p>
+        
+        <div class="card">
+            <!-- Scenario Selection Buttons -->
+            <div class="scenario-buttons">
+                <button class="scenario-btn normal" onclick="loadScenario('normal')" id="btn-normal">
+                    <i class="fas fa-sync me-2"></i>
+                    Normal Operation
+                </button>
+                <button class="scenario-btn warning" onclick="loadScenario('warning')" id="btn-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Warning Zone
+                </button>
+                <button class="scenario-btn critical" onclick="loadScenario('critical')" id="btn-critical">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Critical Alert
+                </button>
+            </div>
+
+            <!-- Current Selection Info -->
+            <div class="info-panel" id="infoPanel">
+                <div class="info-row">
+                    <span class="info-label">
+                        <i class="fas fa-id-card me-2"></i>Engine ID:
+                    </span>
+                    <span class="info-value" id="engineId">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">
+                        <i class="fas fa-sync-alt me-2"></i>Cycle:
+                    </span>
+                    <span class="info-value" id="cycle">-</span>
+                </div>
+            </div>
+
+            <!-- Sensor Values Grid -->
+            <h3>
+                <i class="fas fa-chart-bar me-2"></i>
+                Current Sensor Readings
+            </h3>
+            <div class="sensor-grid" id="sensorGrid">
+                <!-- Sensors will be populated here -->
+                <div class="sensor-item">
+                    <div class="sensor-name">Loading...</div>
+                    <div class="sensor-value">-</div>
+                </div>
+            </div>
+
+            <!-- Analyze Button -->
+            <button class="analyze-btn" onclick="analyze()" id="analyzeBtn">
+                <i class="fas fa-search me-2"></i>
+                Analyze Health Status
+            </button>
+
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <h4>Analyzing engine data with AI models...</h4>
+                <p style="color: var(--text-muted);">This may take a few moments</p>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultSection" style="display: none;"></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>
+                <i class="fas fa-shield-alt me-1"></i>
+                Engine Health Monitoring System | Powered by AI & Machine Learning
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let currentEngineId = null;
+        let currentCycle = null;
+        let currentSensors = [];
+        let currentScenario = null;
+
+        // Status messages for different scenarios
+        const statusMessages = {
+            'normal': {
+                icon: '🟢',
+                title: 'NORMAL OPERATION',
+                message: 'Engine operating within normal parameters',
+                color: 'normal'
+            },
+            'warning': {
+                icon: '🟡',
+                title: 'WARNING ZONE',
+                message: 'Early warning signs detected',
+                color: 'warning'
+            },
+            'critical': {
+                icon: '🔴',
+                title: 'CRITICAL ALERT',
+                message: 'Critical issues detected',
+                color: 'critical'
+            }
+        };
+
+        // Set active button
+        function setActiveButton(scenario) {
+            // Remove active class from all buttons
+            ['normal', 'warning', 'critical'].forEach(s => {
+                const btn = document.getElementById(`btn-${s}`);
+                if (btn) {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Add active class to clicked button
+            const activeBtn = document.getElementById(`btn-${scenario}`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                currentScenario = scenario;
+            }
+        }
+
+        // Load scenario data
+        function loadScenario(scenario) {
+            setActiveButton(scenario);
+            showLoading(true);
+            
+            fetch('/get_scenario_sensors', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({scenario: scenario})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                currentEngineId = data.engine_id;
+                currentCycle = data.cycle;
+                currentSensors = data.sensors;
+                
+                updateDisplay(data);
+                showLoading(false);
+                
+                // Hide previous results
+                document.getElementById('resultSection').style.display = 'none';
+                
+                // Show success toast
+                showToast('Data generated successfully!', 'success');
+            })
+            .catch(error => {
+                showError('Failed to load scenario data');
+                console.error(error);
+                showToast('Error generating data', 'error');
+            });
+        }
+
+        // Update UI with sensor data
+        function updateDisplay(data) {
+            document.getElementById('engineId').textContent = data.engine_id;
+            document.getElementById('cycle').textContent = data.cycle;
+            
+            // Build sensor grid
+            let sensorHtml = '';
+            const sensorNames = [
+                's2 (LPC Temp)', 's3 (HPC Temp)', 's4 (LPT Temp)', 's7 (HPC Press)',
+                's8 (Fan Speed)', 's9 (Core Speed)', 's11 (Static Press)', 's12 (Fuel Flow)',
+                's15 (Bypass Ratio)', 's17 (HPC Coolant)', 's20 (P30 Press)', 's21 (T50 Temp)'
+            ];
+            
+            data.sensors.forEach((value, index) => {
+                sensorHtml += `
+                    <div class="sensor-item">
+                        <div class="sensor-name">${sensorNames[index]}</div>
+                        <div class="sensor-value">${value.toFixed(3)}</div>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('sensorGrid').innerHTML = sensorHtml;
+        }
+
+        // Run analysis
+        function analyze() {
+            if (!currentEngineId || !currentCycle) {
+                showToast('Please select a scenario first', 'warning');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('analyzeBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
+            
+            fetch('/analyse', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    engine_id: currentEngineId,
+                    cycle: currentCycle
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    showToast('Analysis failed', 'error');
+                    return;
+                }
+                
+                displayResults(data);
+                showToast('Analysis complete!', 'success');
+            })
+            .catch(error => {
+                showError('Analysis failed');
+                console.error(error);
+                showToast('Error analyzing data', 'error');
+            })
+            .finally(() => {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('analyzeBtn').disabled = false;
+                document.getElementById('analyzeBtn').innerHTML = '<i class="fas fa-search me-2"></i>Analyze Health Status';
+            });
+        }
+
+        // Display analysis results
+        function displayResults(data) {
+            const status = data.status.toLowerCase();
+            const statusInfo = statusMessages[status] || statusMessages['normal'];
+            
+            const resultHtml = `
+                <hr>
+                
+                <!-- Analysis Results Header -->
+                <div style="margin-bottom: 20px;">
+                    <h3><i class="fas fa-chart-line me-2"></i>Analysis Results</h3>
+                    
+                    <!-- Status Alert -->
+                    <div class="result-card ${status}" style="margin-top: 15px;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <div style="font-size: 48px;">${statusInfo.icon}</div>
+                            <div>
+                                <div class="status-badge ${status}">${data.status}</div>
+                                <p style="margin: 5px 0 0 0; opacity: 0.9;">${statusInfo.message}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Key Metrics Grid -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 25px 0;">
+                    <!-- RUL Metric -->
+                    <div class="metric-card metric-${data.rul > 100 ? 'normal' : data.rul > 50 ? 'warning' : 'critical'}">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; opacity: 0.8;">
+                            <i class="fas fa-hourglass-half me-2"></i>RUL Predicted
+                        </h4>
+                        <div style="font-size: 36px; font-weight: bold;">${data.rul}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">${data.rul_status}</div>
+                    </div>
+                    
+                    <!-- Anomaly Score Metric -->
+                    <div class="metric-card metric-${data.anomaly_score < 0.3 ? 'normal' : data.anomaly_score < 0.6 ? 'warning' : 'critical'}">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; opacity: 0.8;">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Anomaly Score
+                        </h4>
+                        <div style="font-size: 36px; font-weight: bold;">${data.anomaly_score}</div>
+                        <div style="font-size: 12px; opacity: 0.8;">${data.anomaly_status}</div>
+                    </div>
+                </div>
+                
+                <!-- Additional Info -->
+                <div class="info-panel" style="margin: 20px 0;">
+                    <div class="info-row">
+                        <span class="info-label">
+                            <i class="fas fa-chart-line me-2"></i>Top Contributing Sensors:
+                        </span>
+                        <span class="info-value">${data.top_sensors.join(', ')}</span>
+                    </div>
+                </div>
+                
+                <!-- Group Severity -->
+                <h4 style="margin: 25px 0 15px 0;">
+                    <i class="fas fa-chart-pie me-2"></i>Group Severity
+                </h4>
+                <div class="group-severity">
+                    ${Object.entries(data.group_severity).map(([group, level]) => `
+                        <div class="severity-item">
+                            <span>${group.charAt(0).toUpperCase() + group.slice(1)}</span>
+                            <span class="severity-level ${level}">${level}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <!-- AI Insights Section -->
+                <div class="ai-insights" style="margin: 25px 0;">
+                    <h4 style="margin: 0 0 15px 0;">
+                        <i class="fas fa-robot me-2"></i>AI Insights
+                    </h4>
+                    <div>
+                        ${generateAIInsights(data)}
+                    </div>
+                </div>
+                
+                <!-- New Analysis Button -->
+                <div style="text-align: center; margin-top: 30px;">
+                    <button class="analyze-btn" onclick="newAnalysis()" style="width: auto; padding: 12px 30px;">
+                        <i class="fas fa-redo me-2"></i>Generate New Analysis
+                    </button>
+                </div>
+            `;
+            
+            const resultSection = document.getElementById('resultSection');
+            resultSection.innerHTML = resultHtml;
+            resultSection.style.display = 'block';
+            
+            // Scroll to results
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Generate AI insights based on data
+        function generateAIInsights(data) {
+            const insights = [];
+            const rul = parseFloat(data.rul);
+            const anomalyScore = parseFloat(data.anomaly_score);
+            
+            if (rul > 100) {
+                insights.push('✅ Engine health is excellent. Continue routine maintenance.');
+            } else if (rul > 50) {
+                insights.push('⚠️ Moderate degradation detected. Plan for maintenance within next 50 cycles.');
+            } else {
+                insights.push('🔴 Critical: Immediate maintenance required. Engine approaching end of life.');
+            }
+            
+            if (anomalyScore > 0.7) {
+                insights.push('🔴 Multiple sensor anomalies detected. Investigate sensor groups: ' + 
+                    Object.entries(data.group_severity)
+                        .filter(([_, level]) => level === 'HIGH')
+                        .map(([group]) => group)
+                        .join(', '));
+            } else if (anomalyScore > 0.4) {
+                insights.push('⚠️ Some sensors showing early degradation patterns. Monitor closely.');
+            } else {
+                insights.push('✅ All sensor groups operating within normal parameters.');
+            }
+            
+            insights.push(`📊 Top contributors to current health status: ${data.top_sensors.join(', ')}`);
+            
+            return insights.map(insight => `<div style="margin-bottom: 10px;">${insight}</div>`).join('');
+        }
+
+        // Start new analysis
+        function newAnalysis() {
+            // Hide results
+            document.getElementById('resultSection').style.display = 'none';
+            
+            // Remove active button class
+            ['normal', 'warning', 'critical'].forEach(s => {
+                const btn = document.getElementById(`btn-${s}`);
+                if (btn) {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            // Reset current data
+            currentEngineId = null;
+            currentCycle = null;
+            currentSensors = [];
+            currentScenario = null;
+            
+            // Reset display
+            document.getElementById('engineId').textContent = '-';
+            document.getElementById('cycle').textContent = '-';
+            
+            // Reset sensor grid
+            document.getElementById('sensorGrid').innerHTML = `
+                <div class="sensor-item">
+                    <div class="sensor-name">Select a scenario to begin</div>
+                    <div class="sensor-value">-</div>
+                </div>
+            `;
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            
+            showToast('Ready for new analysis', 'info');
+        }
+
+        // Utility functions
+        function showLoading(isLoading) {
+            if (isLoading) {
+                document.getElementById('sensorGrid').innerHTML = `
+                    <div class="loading" style="grid-column: 1/-1;">
+                        <div class="spinner"></div>
+                        <p>Loading sensor data...</p>
+                    </div>
+                `;
+            }
+        }
+
+        function showError(message) {
+            const errorHtml = `
+                <div class="error" style="grid-column: 1/-1;">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    ${message}
+                </div>
+            `;
+            document.getElementById('sensorGrid').innerHTML = errorHtml;
+        }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            // Create toast container if it doesn't exist
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.className = 'toast-container';
+                document.body.appendChild(toastContainer);
+            }
+            
+            // Create toast
+            const toastId = 'toast-' + Date.now();
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = 'toast';
+            
+            // Set color based on type
+            const colors = {
+                'success': 'var(--color-success)',
+                'error': 'var(--color-danger)',
+                'warning': 'var(--color-warning)',
+                'info': 'var(--color-primary)'
+            };
+            toast.style.borderLeftColor = colors[type] || colors.info;
+            
+            // Set icon based on type
+            const icons = {
+                'success': 'fa-check-circle',
+                'error': 'fa-exclamation-circle',
+                'warning': 'fa-exclamation-triangle',
+                'info': 'fa-info-circle'
+            };
+            
+            toast.innerHTML = `
+                <i class="fas ${icons[type] || icons.info}" style="margin-right: 10px; color: ${colors[type] || colors.info};"></i>
+                <div style="flex: 1;">${message}</div>
+                <button onclick="this.parentElement.remove()" style="background: none; border: none; color: var(--text-muted); cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Auto remove after 3 seconds
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 3000);
+        }
+
+        // Load normal scenario by default
+        window.onload = function() {
+            loadScenario('normal');
+        };
+    </script>
+</body>
+</html>
