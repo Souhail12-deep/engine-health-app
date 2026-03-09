@@ -8,25 +8,27 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 @pytest.fixture(autouse=True)
-def mock_models():
-    """Mock model loading for all tests."""
-    with patch('services.model_loader.joblib.load') as mock_joblib, \
-         patch('services.model_loader.tf.keras.models.load_model') as mock_keras, \
-         patch('services.model_loader.ModelLoader._load_models') as mock_load:
+def mock_all_models():
+    """Mock all model loading for tests."""
+    # Mock joblib.load
+    mock_joblib = MagicMock()
+    mock_model = MagicMock()
+    mock_model.decision_function.return_value = [0.5]
+    mock_model.predict.return_value = [[100]]
+    mock_joblib.return_value = mock_model
+    
+    # Mock keras load_model
+    mock_keras = MagicMock(return_value=mock_model)
+    
+    # Mock os.path.exists to return True for model paths
+    mock_exists = MagicMock(return_value=True)
+    
+    with patch('services.model_loader.joblib.load', mock_joblib), \
+         patch('services.model_loader.load_model', mock_keras), \
+         patch('os.path.exists', mock_exists):
         
-        # Create mock models
-        mock_model = MagicMock()
-        mock_model.decision_function.return_value = [0.5]
-        mock_model.predict.return_value = [[100]]
-        
-        mock_scaler = MagicMock()
-        mock_scaler.transform.return_value = [[0.1] * 12]
-        
-        # Setup return values
-        mock_joblib.return_value = mock_model
-        mock_keras.return_value = mock_model
-        
-        # Allow ModelLoader to be created without loading real models
-        mock_load.return_value = None
+        # Now import modules that might load models
+        from services.model_loader import ModelLoader
+        ModelLoader._initialized = False  # Reset for tests
         
         yield
