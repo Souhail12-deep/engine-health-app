@@ -22,22 +22,11 @@ COPY config.py ./
 COPY templates/ ./templates/
 COPY static/ ./static/
 
-# Copy models and data
-COPY models/ ./models/
-COPY data/ ./data/
+# Create directories for models and data (they will be empty in CI)
+RUN mkdir -p /app/models /app/data
 
 # Set Python path
 ENV PYTHONPATH=/app
-
-# Debug: List contents
-RUN echo "=== Container contents ===" && \
-    ls -la && \
-    echo "=== Models directory ===" && \
-    ls -la models/ && \
-    echo "=== Models/anodet_models ===" && \
-    ls -la models/anodet_models/ && \
-    echo "=== Models/rul_models ===" && \
-    ls -la models/rul_models/
 
 EXPOSE 5000
 
