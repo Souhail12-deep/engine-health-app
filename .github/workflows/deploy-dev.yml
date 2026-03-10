@@ -9,6 +9,7 @@ on:
 env:
   AWS_REGION: eu-north-1
   ECR_REPOSITORY: engine-health-app
+  S3_BUCKET_NAME: engine-health-models-souhail-20260304
 
 jobs:
   test:
@@ -96,6 +97,3 @@ jobs:
         # Push both tags
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:dev-latest
-    
-    - name: Image digest
-      run: echo ${{ steps.docker_build.outputs.digest }}

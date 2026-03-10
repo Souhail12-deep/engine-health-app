@@ -9,6 +9,7 @@ on:
 env:
   AWS_REGION: eu-north-1
   ECR_REPOSITORY: engine-health-app
+  S3_BUCKET_NAME: engine-health-models-souhail-20260304
 
 jobs:
   test:
@@ -136,6 +137,7 @@ jobs:
         terraform plan \
           -var="docker_image=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}" \
           -var="environment=prod" \
+          -var="s3_bucket_name=${{ env.S3_BUCKET_NAME }}" \
           -no-color \
           -out=tfplan
     
