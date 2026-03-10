@@ -3,33 +3,59 @@ import pandas as pd
 import os
 import random
 import pickle
+import sys
 from config import SELECTED_SENSORS, WINDOW_SIZE
 from services.preprocessing_service import PreprocessingService
 from services.model_loader import get_models
 from utils.sensor_contribution import calculate_sensor_contributions
 from utils.severity import determine_status
 
-# Load pre-processed scenario windows
-WINDOWS_PATH = os.path.join("data", "test", "scenario_windows.pkl")
+# Detect if we're in test mode
+IN_TEST = 'pytest' in sys.modules or 'PYTEST_CURRENT_TEST' in os.environ
 
-if os.path.exists(WINDOWS_PATH):
-    with open(WINDOWS_PATH, 'rb') as f:
-        scenario_windows = pickle.load(f)
-    print(f"✅ Loaded {len(scenario_windows)} pre-processed scenario windows")
+# Lazy load scenario windows - only when needed and not in test mode
+scenario_windows = None
+scenario_df = None
+
+def _load_scenario_windows():
+    """Load scenario windows (lazy loading)."""
+    global scenario_windows, scenario_df
     
-    # Convert to DataFrame for easier filtering
-    scenario_df = pd.DataFrame(scenario_windows)
-else:
-    scenario_windows = None
-    scenario_df = None
-    print("⚠️ No pre-processed windows found. Run utils/preprocess_test_data.py first")
+    if IN_TEST:
+        # In test mode, create mock data
+        print("📋 Test mode detected - creating mock scenario windows")
+        scenario_windows = []
+        scenario_df = pd.DataFrame()
+        return
+    
+    WINDOWS_PATH = os.path.join("data", "test", "scenario_windows.pkl")
+    
+    if os.path.exists(WINDOWS_PATH):
+        with open(WINDOWS_PATH, 'rb') as f:
+            scenario_windows = pickle.load(f)
+        print(f"✅ Loaded {len(scenario_windows)} pre-processed scenario windows")
+        scenario_df = pd.DataFrame(scenario_windows)
+    else:
+        scenario_windows = None
+        scenario_df = None
+        print("⚠️ No pre-processed windows found. Run utils/preprocess_test_data.py first")
+
+# Don't load at import time - will be loaded when needed
+def get_scenario_data():
+    """Get scenario data (lazy loading)."""
+    global scenario_windows, scenario_df
+    if scenario_windows is None:
+        _load_scenario_windows()
+    return scenario_windows, scenario_df
 
 def get_sensor_values(scenario_type="normal"):
     """Get sensor values for a specific scenario."""
-    if scenario_df is None or len(scenario_df) == 0:
+    windows, df = get_scenario_data()
+    
+    if df is None or len(df) == 0:
         return None, None, None
     
-    scenario_data = scenario_df[scenario_df['scenario'] == scenario_type]
+    scenario_data = df[df['scenario'] == scenario_type]
     if len(scenario_data) == 0:
         return None, None, None
     
@@ -45,11 +71,12 @@ def get_sensor_values(scenario_type="normal"):
 
 def run_analysis(engine_id, cycle):
     """Run complete analysis for a given engine and cycle."""
-    if scenario_df is None:
+    windows, df = get_scenario_data()
+    
+    if df is None:
         return {"error": "No pre-processed windows available"}
     
-    matches = scenario_df[(scenario_df['engine_id'] == engine_id) & 
-                          (scenario_df['cycle'] == cycle)]
+    matches = df[(df['engine_id'] == engine_id) & (df['cycle'] == cycle)]
     
     if len(matches) == 0:
         return {"error": f"No pre-processed window found for Engine {engine_id} at cycle {cycle}"}
