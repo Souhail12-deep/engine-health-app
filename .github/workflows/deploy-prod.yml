@@ -159,14 +159,4 @@ jobs:
         curl -f $URL/health || exit 1
         echo "✅ Health check passed"
     
-    - name: Create Deployment Status
-      uses: actions/github-script@v6
-      with:
-        script: |
-          github.rest.repos.createDeploymentStatus({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            deployment_id: context.payload.deployment.id,
-            state: 'success',
-            environment_url: '${{ steps.get_url.outputs.url }}'
-          })
+    
