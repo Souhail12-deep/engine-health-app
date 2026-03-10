@@ -30,7 +30,7 @@ from routes.predict import predict_bp
 app.register_blueprint(ui_bp)
 app.register_blueprint(predict_bp)
 
-# Global variables for models - lazy loading
+# Global variables for models
 iso_model = None
 iso_scaler = None
 lstm_model = None
@@ -39,7 +39,7 @@ scenario_samples = None
 MODELS_PATH = '/app/models'
 
 def load_models():
-    """Load ML models - called only when needed"""
+    """Load ML models"""
     global iso_model, iso_scaler, lstm_model, rul_scaler, scenario_samples
     
     logger.info("=" * 50)
@@ -99,20 +99,12 @@ def load_models():
         import traceback
         logger.error(traceback.format_exc())
 
-# Lazy loading decorator for routes that need models
-def with_models(f):
-    def decorated(*args, **kwargs):
-        if iso_model is None:
-            load_models()
-        return f(*args, **kwargs)
-    return decorated
-
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
     status = {
         'status': 'healthy',
-        'models_loaded': all([iso_model, iso_scaler, lstm_model, rul_scaler, scenario_samples]) if iso_model else False
+        'models_loaded': all([iso_model, iso_scaler, lstm_model, rul_scaler, scenario_samples])
     }
     return jsonify(status), 200
 
@@ -135,7 +127,7 @@ def get_scenario_sensors():
         scenario = data.get('scenario', 'normal')
         
         if scenario_samples is None:
-            return jsonify({'error': 'Scenario samples not loaded'}), 503
+            return jsonify({'error': 'Models not loaded'}), 503
         
         # Filter by scenario
         scenario_data = [s for s in scenario_samples if s['scenario'] == scenario]
@@ -159,7 +151,6 @@ def get_scenario_sensors():
 
 @app.route('/analyse', methods=['POST'])
 @metrics.counter('analysis_requests', 'Number of analysis requests')
-@with_models
 def analyse():
     """Run analysis on engine data"""
     try:
