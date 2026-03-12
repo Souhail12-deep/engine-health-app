@@ -11,26 +11,21 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 os.environ['PYTEST_CURRENT_TEST'] = 'true'
 
 @pytest.fixture(autouse=True)
-def mock_all_external_dependencies():
-    """Mock all external dependencies for tests."""
-    
-    # Mock joblib loading
+def mock_models():
+    """Mock only the model loading - not Flask internals."""
     mock_model = MagicMock()
     mock_model.decision_function.return_value = [0.5]
     mock_model.predict.return_value = [[100]]
     
-    # Mock pandas DataFrame operations
-    mock_df = MagicMock()
-    mock_df.__getitem__.return_value = mock_df
-    mock_df.iloc.__getitem__.return_value = {'sensor_window': [[0]*12]}
+    mock_scaler = MagicMock()
+    mock_scaler.transform.return_value = [[0.1] * 12]
     
+    # Only mock our specific modules, not builtins or Flask
     with patch('services.model_loader.joblib.load', return_value=mock_model), \
          patch('services.model_loader.tf.keras.models.load_model', return_value=mock_model), \
          patch('services.inference_service.pd.read_csv'), \
-         patch('services.inference_service.pd.DataFrame', return_value=mock_df), \
-         patch('os.path.exists', return_value=True), \
-         patch('builtins.open', MagicMock()), \
-         patch('pickle.load', return_value=[]):
+         patch('services.inference_service.pickle.load', return_value=[]), \
+         patch('os.path.exists', return_value=True):
         yield
 
 @pytest.fixture
