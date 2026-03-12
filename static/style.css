@@ -357,9 +357,18 @@ h3 i {
     margin-bottom: 15px;
 }
 
-.metric-normal { border-left-color: var(--color-success); }
-.metric-warning { border-left-color: var(--color-warning); }
-.metric-critical { border-left-color: var(--color-danger); }
+.metric-normal { 
+    border-left-color: var(--color-success); /* Green */
+}
+
+.metric-warning { 
+    border-left-color: var(--color-warning); /* Orange */
+}
+
+.metric-critical { 
+    border-left-color: var(--color-danger); /* Red */
+    animation: pulse 2s infinite;
+}
 
 /* Checklist Items (for recommendations) */
 .checklist-item {
