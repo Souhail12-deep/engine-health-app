@@ -36,4 +36,4 @@ ENV/
 
 # AWS keys
 *.pem
-*.pem.txt
+*.pem.txtterraform/terraform.tfvars
