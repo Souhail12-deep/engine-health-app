@@ -15,7 +15,7 @@
             Engine Health Monitoring System
         </h1>
         <p class="text-muted" style="text-align: center; margin-bottom: 30px; color: var(--text-muted);">
-            Generate and analyze engine cycle data with AI insights
+            Generate and analyze engine cycle data
         </p>
         
         <div class="card">
@@ -246,6 +246,12 @@
             const status = data.status.toLowerCase();
             const statusInfo = statusMessages[status] || statusMessages['normal'];
             
+            // Determine color class based on status (same for both metrics)
+            const colorClass = status;
+            
+            // Check if we should show top sensors (hide when normal)
+            const showTopSensors = status !== 'normal';
+            
             const resultHtml = `
                 <hr>
                 
@@ -265,10 +271,10 @@
                     </div>
                 </div>
                 
-                <!-- Key Metrics Grid -->
+                <!-- Key Metrics Grid - Both use the same color based on final status -->
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 25px 0;">
-                    <!-- RUL Metric -->
-                    <div class="metric-card metric-${data.rul > 100 ? 'normal' : data.rul > 50 ? 'warning' : 'critical'}">
+                    <!-- RUL Metric - Color based on final status -->
+                    <div class="metric-card metric-${colorClass}">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; opacity: 0.8;">
                             <i class="fas fa-hourglass-half me-2"></i>RUL Predicted
                         </h4>
@@ -276,8 +282,8 @@
                         <div style="font-size: 12px; opacity: 0.8;">${data.rul_status}</div>
                     </div>
                     
-                    <!-- Anomaly Score Metric -->
-                    <div class="metric-card metric-${data.anomaly_score < 0.3 ? 'normal' : data.anomaly_score < 0.6 ? 'warning' : 'critical'}">
+                    <!-- Anomaly Score Metric - Color based on final status -->
+                    <div class="metric-card metric-${colorClass}">
                         <h4 style="margin: 0 0 10px 0; font-size: 14px; opacity: 0.8;">
                             <i class="fas fa-exclamation-triangle me-2"></i>Anomaly Score
                         </h4>
@@ -286,7 +292,8 @@
                     </div>
                 </div>
                 
-                <!-- Additional Info -->
+                <!-- Additional Info - Only show top sensors when not normal -->
+                ${showTopSensors ? `
                 <div class="info-panel" style="margin: 20px 0;">
                     <div class="info-row">
                         <span class="info-label">
@@ -295,6 +302,7 @@
                         <span class="info-value">${data.top_sensors.join(', ')}</span>
                     </div>
                 </div>
+                ` : ''}
                 
                 <!-- Group Severity -->
                 <h4 style="margin: 25px 0 15px 0;">
@@ -307,16 +315,6 @@
                             <span class="severity-level ${level}">${level}</span>
                         </div>
                     `).join('')}
-                </div>
-                
-                <!-- AI Insights Section -->
-                <div class="ai-insights" style="margin: 25px 0;">
-                    <h4 style="margin: 0 0 15px 0;">
-                        <i class="fas fa-robot me-2"></i>AI Insights
-                    </h4>
-                    <div>
-                        ${generateAIInsights(data)}
-                    </div>
                 </div>
                 
                 <!-- New Analysis Button -->
@@ -333,37 +331,6 @@
             
             // Scroll to results
             resultSection.scrollIntoView({ behavior: 'smooth' });
-        }
-
-        // Generate AI insights based on data
-        function generateAIInsights(data) {
-            const insights = [];
-            const rul = parseFloat(data.rul);
-            const anomalyScore = parseFloat(data.anomaly_score);
-            
-            if (rul > 100) {
-                insights.push('✅ Engine health is excellent. Continue routine maintenance.');
-            } else if (rul > 50) {
-                insights.push('⚠️ Moderate degradation detected. Plan for maintenance within next 50 cycles.');
-            } else {
-                insights.push('🔴 Critical: Immediate maintenance required. Engine approaching end of life.');
-            }
-            
-            if (anomalyScore > 0.7) {
-                insights.push('🔴 Multiple sensor anomalies detected. Investigate sensor groups: ' + 
-                    Object.entries(data.group_severity)
-                        .filter(([_, level]) => level === 'HIGH')
-                        .map(([group]) => group)
-                        .join(', '));
-            } else if (anomalyScore > 0.4) {
-                insights.push('⚠️ Some sensors showing early degradation patterns. Monitor closely.');
-            } else {
-                insights.push('✅ All sensor groups operating within normal parameters.');
-            }
-            
-            insights.push(`📊 Top contributors to current health status: ${data.top_sensors.join(', ')}`);
-            
-            return insights.map(insight => `<div style="margin-bottom: 10px;">${insight}</div>`).join('');
         }
 
         // Start new analysis
