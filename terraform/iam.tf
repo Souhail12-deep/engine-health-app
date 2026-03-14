@@ -20,7 +20,7 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
-# IAM Policy for S3 access
+# IAM Policy for S3 access (CORRIGÉE)
 resource "aws_iam_policy" "s3_access" {
   name        = "${var.project_name}-s3-access"
   description = "Allow EC2 to access S3 bucket"
@@ -31,11 +31,21 @@ resource "aws_iam_policy" "s3_access" {
       {
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:ListBucket"
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
         ]
         Resource = [
-          aws_s3_bucket.models.arn,
+          aws_s3_bucket.models.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:GetObjectAcl"
+        ]
+        Resource = [
           "${aws_s3_bucket.models.arn}/*"
         ]
       }
@@ -87,7 +97,7 @@ resource "aws_iam_policy" "ecr_access" {
   })
 }
 
-# ========== NEW SSM POLICIES ==========
+# ========== SSM POLICIES ==========
 
 # SSM Core Policy (AWS Managed)
 resource "aws_iam_role_policy_attachment" "ssm_core" {
@@ -124,7 +134,7 @@ resource "aws_iam_role_policy_attachment" "ssm_extra_attach" {
   policy_arn = aws_iam_policy.ssm_extra.arn
 }
 
-# ========== END NEW SSM POLICIES ==========
+# ========== END SSM POLICIES ==========
 
 # Attach policies to role
 resource "aws_iam_role_policy_attachment" "s3_attach" {

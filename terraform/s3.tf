@@ -1,6 +1,7 @@
 # S3 Bucket for models
 resource "aws_s3_bucket" "models" {
   bucket = var.s3_bucket_name
+  force_destroy = true  # ← Permet de vider le bucket automatiquement
 
   tags = merge(var.tags, {
     Name = "${var.project_name}-models"
