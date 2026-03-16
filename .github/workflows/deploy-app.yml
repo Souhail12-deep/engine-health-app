@@ -83,7 +83,6 @@ jobs:
     - name: Image digest
       run: echo "Image pushed with tag ${{ steps.set_tag.outputs.tag }}"
 
-  # ===== NOUVEAU JOB AJOUTÉ =====
   trigger-infra:
     name: Trigger Infrastructure Deployment
     needs: build-and-push
@@ -91,6 +90,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     
     steps:
+    - name: Wait for ECR to be ready
+      run: sleep 30
+    
     - name: Repository Dispatch
       uses: peter-evans/repository-dispatch@v2
       with:
