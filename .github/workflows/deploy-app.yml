@@ -82,3 +82,23 @@ jobs:
 
     - name: Image digest
       run: echo "Image pushed with tag ${{ steps.set_tag.outputs.tag }}"
+
+  # ===== NOUVEAU JOB AJOUTÉ =====
+  trigger-infra:
+    name: Trigger Infrastructure Deployment
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Repository Dispatch
+      uses: peter-evans/repository-dispatch@v2
+      with:
+        token: ${{ secrets.GH_PAT }}
+        repository: Souhail12-deep/engine-health-infra
+        event-type: new-app-version
+        client-payload: '{"image_tag": "${{ needs.build-and-push.outputs.image_tag }}"}'
+    
+    - name: Dispatch Info
+      run: |
+        echo "✅ Infrastructure pipeline triggered with image tag: ${{ needs.build-and-push.outputs.image_tag }}"
