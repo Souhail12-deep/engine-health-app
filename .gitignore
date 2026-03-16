@@ -10,7 +10,9 @@ data/
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
-*.tfplan
+terraform/*.tfplan
+.terraform.lock.hcl
+*.exe
 
 # Python
 __pycache__/
@@ -37,3 +39,5 @@ ENV/
 # AWS keys
 *.pem
 *.pem.txtterraform/terraform.tfvars
+terraform/
+scripts/
