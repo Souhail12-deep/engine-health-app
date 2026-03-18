@@ -1,4 +1,4 @@
-"""Tests pour valider la performance des modeles ML - VERSION FINALE"""
+"""Tests pour valider la performance des modèles ML"""
 import pytest
 import sys
 import os
@@ -7,50 +7,54 @@ import pandas as pd
 import pickle
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Desactiver le mode test
+# Désactiver le mode test
 os.environ['PYTEST_CURRENT_TEST'] = 'false'
 
 from services.model_loader import get_models
 from services.preprocessing_service import PreprocessingService
 from config import ANOMALY_THRESHOLDS, RUL_THRESHOLDS, SELECTED_SENSORS
 
-# Chemin absolu vers les donnees de test
+# Chemin absolu vers les données de test
 DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'test', 'scenario_windows.pkl')
+
+# Vérifier la présence des données au niveau module
+_DATA_AVAILABLE = os.path.exists(DATA_FILE)
+
+if not _DATA_AVAILABLE:
+    print(f"⚠️ Données de test non trouvées: {DATA_FILE}")
+    print("⚠️ Les tests dépendant des données seront ignorés")
 
 @pytest.fixture(scope="session")
 def test_data():
-    """Charge les donnees de test si disponibles"""
-    print(f"\n[INFO] Fichier: {DATA_FILE}")
-    if not os.path.exists(DATA_FILE):
-        pytest.skip(f"Donnees non disponibles: {DATA_FILE}")
+    """Charge les données de test si disponibles"""
+    if not _DATA_AVAILABLE:
+        pytest.skip("Données de test non disponibles")
     
     with open(DATA_FILE, 'rb') as f:
         data = pickle.load(f)
     
     df = pd.DataFrame(data)
-    print(f"[OK] {len(df)} echantillons")
+    print(f"✅ Données chargées: {len(df)} échantillons")
     return df
 
 @pytest.fixture(scope="module")
 def models():
-    """Charge les modeles pour les tests"""
-    print("\n[INFO] Chargement des modeles...")
+    """Charge les modèles pour les tests"""
     return get_models()
 
 def test_anomaly_model_loading(models):
-    """Test que le modele d'anomalie se charge"""
+    """Test que le modèle d'anomalie se charge"""
     assert models.iso_model is not None
     assert models.iso_scaler is not None
-    print("[OK] Modele anomalie")
 
 def test_rul_model_loading(models):
-    """Test que le modele RUL se charge"""
+    """Test que le modèle RUL se charge"""
     assert models.lstm_model is not None
     assert models.rul_scaler is not None
-    print("[OK] Modele RUL")
 
+@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
 def test_anomaly_prediction(models, test_data):
-    """Test les predictions d'anomalie"""
+    """Test les prédictions d'anomalie"""
     scores = []
     n_samples = min(5, len(test_data))
     
@@ -66,7 +70,7 @@ def test_anomaly_prediction(models, test_data):
         scores.append(score)
     
     scores = np.array(scores)
-    print(f"\n[STATS] Scores anomalie ({n_samples} echantillons):")
+    print(f"\n[STATS] Scores anomalie ({n_samples} échantillons):")
     print(f"   Min: {scores.min():.4f}")
     print(f"   Max: {scores.max():.4f}")
     print(f"   Moy: {scores.mean():.4f}")
@@ -74,8 +78,9 @@ def test_anomaly_prediction(models, test_data):
     assert len(scores) == n_samples
     assert all(isinstance(s, float) for s in scores)
 
+@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
 def test_rul_prediction(models, test_data):
-    """Test les predictions RUL"""
+    """Test les prédictions RUL"""
     predictions = []
     n_samples = min(5, len(test_data))
     
@@ -91,7 +96,7 @@ def test_rul_prediction(models, test_data):
         predictions.append(rul)
     
     predictions = np.array(predictions)
-    print(f"\n[STATS] Predictions RUL ({n_samples} echantillons):")
+    print(f"\n[STATS] Prédictions RUL ({n_samples} échantillons):")
     print(f"   Min: {predictions.min():.1f} cycles")
     print(f"   Max: {predictions.max():.1f} cycles")
     print(f"   Moy: {predictions.mean():.1f} cycles")
@@ -99,6 +104,7 @@ def test_rul_prediction(models, test_data):
     assert len(predictions) == n_samples
     assert all(p >= 0 for p in predictions)
 
+@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
 def test_anomaly_thresholds(models, test_data):
     """Test la distribution des statuts d'anomalie"""
     n_samples = min(20, len(test_data))
@@ -122,13 +128,14 @@ def test_anomaly_thresholds(models, test_data):
             critical += 1
     
     total = normal + warning + critical
-    print(f"\n[DISTRIBUTION] Anomalies ({total} echantillons):")
+    print(f"\n[DISTRIBUTION] Anomalies ({total} échantillons):")
     print(f"   Normal:   {normal} ({normal/total*100:.1f}%)")
     print(f"   Warning:  {warning} ({warning/total*100:.1f}%)")
     print(f"   Critical: {critical} ({critical/total*100:.1f}%)")
     
     assert total == n_samples
 
+@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
 def test_rul_thresholds(models, test_data):
     """Test la distribution des statuts RUL"""
     n_samples = min(20, len(test_data))
@@ -152,7 +159,7 @@ def test_rul_thresholds(models, test_data):
             critical += 1
     
     total = normal + warning + critical
-    print(f"\n[DISTRIBUTION] RUL ({total} echantillons):")
+    print(f"\n[DISTRIBUTION] RUL ({total} échantillons):")
     print(f"   Normal:   {normal} ({normal/total*100:.1f}%)")
     print(f"   Warning:  {warning} ({warning/total*100:.1f}%)")
     print(f"   Critical: {critical} ({critical/total*100:.1f}%)")
