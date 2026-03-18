@@ -9,9 +9,6 @@ from config import (
     RUL_MODEL_PATH, RUL_SCALER_PATH
 )
 
-# Detect if we're running in test mode
-IN_TEST = 'pytest' in sys.modules or 'PYTEST_CURRENT_TEST' in os.environ
-
 # Custom loss function for LSTM
 def asymmetric_mse(y_true, y_pred):
     """Penalize late predictions more heavily"""
@@ -30,38 +27,60 @@ class ModelLoader:
         return cls._instance
     
     def __init__(self):
-        """Initialize with test mode detection."""
-        if not self._initialized and not IN_TEST:
+        """Initialize and load models"""
+        if not self._initialized:
+            print("=" * 50)
+            print("Loading models...")
+            print("=" * 50)
             self._load_models()
-            self._initialized = True
-        elif IN_TEST:
-            print("📋 Test mode detected - skipping model loading")
-            # Create mock models for test mode if needed
-            self.iso_model = None
-            self.iso_scaler = None
-            self.lstm_model = None
-            self.rul_scaler = None
-            self.model_params = None
             self._initialized = True
     
     def _load_models(self):
         """Load all trained models"""
-        print("=" * 50)
-        print("Loading models...")
-        print("=" * 50)
         
-        # Check if files exist before loading
-        if not os.path.exists(ANOMALY_MODEL_PATH):
-            raise FileNotFoundError(f"Model file not found: {ANOMALY_MODEL_PATH}")
+        # Chemins des modèles
+        model_paths = {
+            'iso_model': ANOMALY_MODEL_PATH,
+            'iso_scaler': ANOMALY_SCALER_PATH,
+            'lstm_model': RUL_MODEL_PATH,
+            'rul_scaler': RUL_SCALER_PATH,
+            'params': ANOMALY_PARAMS_PATH
+        }
+        
+        # Vérifier si les fichiers existent
+        missing_files = []
+        for name, path in model_paths.items():
+            if not os.path.exists(path):
+                missing_files.append(f"{name}: {path}")
+        
+        if missing_files:
+            print("⚠️ Fichiers manquants:")
+            for f in missing_files:
+                print(f"   {f}")
+            
+            # En CI/CD, on ne peut pas charger les modèles
+            if os.environ.get('CI') == 'true':
+                print("��� Mode CI/CD détecté - utilisation de modèles simulés pour les tests")
+                self._create_mock_models()
+                return
+            else:
+                raise FileNotFoundError(f"Modèles manquants: {missing_files}")
         
         # Load anomaly detection models
+        print(f"Loading Isolation Forest from: {ANOMALY_MODEL_PATH}")
         self.iso_model = joblib.load(ANOMALY_MODEL_PATH)
+        print("✅ Isolation Forest loaded")
+        
+        print(f"Loading ISO Scaler from: {ANOMALY_SCALER_PATH}")
         self.iso_scaler = joblib.load(ANOMALY_SCALER_PATH)
+        print("✅ ISO Scaler loaded")
         
         # Load model parameters
         try:
             self.model_params = joblib.load(ANOMALY_PARAMS_PATH)
+            print("✅ Model parameters loaded")
         except:
+            print("⚠️ Using default model parameters")
             self.model_params = {
                 'p90_normal': -0.0075,
                 'p97_normal': 0.0051,
@@ -69,38 +88,84 @@ class ModelLoader:
             }
         
         # Load RUL model
+        print(f"Loading LSTM from: {RUL_MODEL_PATH}")
         self.lstm_model = load_model(
             RUL_MODEL_PATH,
             custom_objects={'asymmetric_mse': asymmetric_mse},
             compile=False
         )
-        self.rul_scaler = joblib.load(RUL_SCALER_PATH)
+        print("✅ LSTM model loaded")
         
-        print("✅ All models loaded successfully")
+        print(f"Loading RUL Scaler from: {RUL_SCALER_PATH}")
+        self.rul_scaler = joblib.load(RUL_SCALER_PATH)
+        print("✅ RUL Scaler loaded")
+        
+        print("=" * 50)
+        print("✅✅✅ ALL MODELS LOADED SUCCESSFULLY! ✅✅✅")
+        print("=" * 50)
+    
+    def _create_mock_models(self):
+        """Create mock models for CI/CD testing"""
+        print("��� Création de modèles simulés pour les tests CI/CD")
+        
+        # Mock Isolation Forest
+        from sklearn.ensemble import IsolationForest
+        import numpy as np
+        
+        # Créer un mock du modèle Isolation Forest
+        self.iso_model = IsolationForest(contamination=0.1, random_state=42)
+        # Entraîner sur des données factices
+        X_dummy = np.random.randn(100, 12)
+        self.iso_model.fit(X_dummy)
+        
+        # Mock scaler
+        from sklearn.preprocessing import StandardScaler
+        self.iso_scaler = StandardScaler()
+        self.iso_scaler.fit(X_dummy)
+        
+        # Mock RUL scaler
+        from sklearn.preprocessing import MinMaxScaler
+        self.rul_scaler = MinMaxScaler()
+        self.rul_scaler.fit(X_dummy)
+        
+        # Mock LSTM model
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense
+        
+        model = Sequential([
+            LSTM(50, input_shape=(30, 12)),
+            Dense(1)
+        ])
+        model.compile(optimizer='adam', loss='mse')
+        self.lstm_model = model
+        
+        # Mock params
+        self.model_params = {
+            'p90_normal': -0.0075,
+            'p97_normal': 0.0051,
+            'THRESHOLD': 0.0051
+        }
+        
+        print("✅ Modèles simulés créés avec succès")
     
     def get_anomaly_score(self, features):
         """Get anomaly score from Isolation Forest"""
-        if IN_TEST and self.iso_model is None:
-            return 0.0  # Return mock value in test mode
-        score = -self.iso_model.decision_function(features)[0]
-        return float(score)
+        if hasattr(self, 'iso_model'):
+            score = -self.iso_model.decision_function(features)[0]
+            return float(score)
+        return 0.0  # Valeur par défaut pour les tests
     
     def predict_rul(self, sequence):
         """Predict RUL from sensor sequence"""
-        if IN_TEST and self.lstm_model is None:
-            return 100.0  # Return mock value in test mode
-        pred = self.lstm_model.predict(sequence, verbose=0)[0][0]
-        return float(max(0, pred))
+        if hasattr(self, 'lstm_model'):
+            pred = self.lstm_model.predict(sequence, verbose=0)[0][0]
+            return float(max(0, pred))
+        return 100.0  # Valeur par défaut pour les tests
 
-# Don't create instance at import time - will be created when needed
-_models = None
-
+# Fonction pour récupérer l'instance
 def get_models():
     """Get or create ModelLoader instance."""
-    global _models
-    if _models is None:
-        _models = ModelLoader()
-    return _models
+    return ModelLoader()
 
-# For backward compatibility, expose the instance
+# Singleton instance
 models = get_models()
