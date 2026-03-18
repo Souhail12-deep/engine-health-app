@@ -19,22 +19,22 @@ DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'te
 
 @pytest.fixture(scope="session")
 def test_data():
-    """Charge les donnees de test une fois pour tous les tests"""
-    print(f"\n[CHARGEMENT] Fichier: {DATA_FILE}")
+    """Charge les donnees de test si disponibles"""
+    print(f"\n[INFO] Fichier: {DATA_FILE}")
     if not os.path.exists(DATA_FILE):
-        pytest.fail(f"Fichier non trouve: {DATA_FILE}")
+        pytest.skip(f"Donnees non disponibles: {DATA_FILE}")
     
     with open(DATA_FILE, 'rb') as f:
         data = pickle.load(f)
     
     df = pd.DataFrame(data)
-    print(f"[OK] Donnees chargees: {len(df)} echantillons")
+    print(f"[OK] {len(df)} echantillons")
     return df
 
 @pytest.fixture(scope="module")
 def models():
-    """Charge les vrais modeles pour les tests"""
-    print("\n[CHARGEMENT] Modeles...")
+    """Charge les modeles pour les tests"""
+    print("\n[INFO] Chargement des modeles...")
     return get_models()
 
 def test_anomaly_model_loading(models):

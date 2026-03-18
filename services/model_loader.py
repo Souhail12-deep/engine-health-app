@@ -38,7 +38,7 @@ class ModelLoader:
     def _load_models(self):
         """Load all trained models"""
         
-        # Chemins des modèles
+        # Chemins des modeles
         model_paths = {
             'iso_model': ANOMALY_MODEL_PATH,
             'iso_scaler': ANOMALY_SCALER_PATH,
@@ -47,40 +47,40 @@ class ModelLoader:
             'params': ANOMALY_PARAMS_PATH
         }
         
-        # Vérifier si les fichiers existent
+        # Verifier si les fichiers existent
         missing_files = []
         for name, path in model_paths.items():
             if not os.path.exists(path):
                 missing_files.append(f"{name}: {path}")
         
         if missing_files:
-            print("⚠️ Fichiers manquants:")
+            print("Attention: Fichiers manquants:")
             for f in missing_files:
                 print(f"   {f}")
             
-            # En CI/CD, on ne peut pas charger les modèles
+            # En CI/CD, on ne peut pas charger les modeles
             if os.environ.get('CI') == 'true':
-                print("��� Mode CI/CD détecté - utilisation de modèles simulés pour les tests")
+                print("Mode CI/CD detecte - utilisation de modeles simules")
                 self._create_mock_models()
                 return
             else:
-                raise FileNotFoundError(f"Modèles manquants: {missing_files}")
+                raise FileNotFoundError(f"Modeles manquants: {missing_files}")
         
         # Load anomaly detection models
         print(f"Loading Isolation Forest from: {ANOMALY_MODEL_PATH}")
         self.iso_model = joblib.load(ANOMALY_MODEL_PATH)
-        print("✅ Isolation Forest loaded")
+        print("OK - Isolation Forest loaded")
         
         print(f"Loading ISO Scaler from: {ANOMALY_SCALER_PATH}")
         self.iso_scaler = joblib.load(ANOMALY_SCALER_PATH)
-        print("✅ ISO Scaler loaded")
+        print("OK - ISO Scaler loaded")
         
         # Load model parameters
         try:
             self.model_params = joblib.load(ANOMALY_PARAMS_PATH)
-            print("✅ Model parameters loaded")
+            print("OK - Model parameters loaded")
         except:
-            print("⚠️ Using default model parameters")
+            print("Using default model parameters")
             self.model_params = {
                 'p90_normal': -0.0075,
                 'p97_normal': 0.0051,
@@ -94,27 +94,27 @@ class ModelLoader:
             custom_objects={'asymmetric_mse': asymmetric_mse},
             compile=False
         )
-        print("✅ LSTM model loaded")
+        print("OK - LSTM model loaded")
         
         print(f"Loading RUL Scaler from: {RUL_SCALER_PATH}")
         self.rul_scaler = joblib.load(RUL_SCALER_PATH)
-        print("✅ RUL Scaler loaded")
+        print("OK - RUL Scaler loaded")
         
         print("=" * 50)
-        print("✅✅✅ ALL MODELS LOADED SUCCESSFULLY! ✅✅✅")
+        print("ALL MODELS LOADED SUCCESSFULLY")
         print("=" * 50)
     
     def _create_mock_models(self):
         """Create mock models for CI/CD testing"""
-        print("��� Création de modèles simulés pour les tests CI/CD")
+        print("Creation de modeles simules pour les tests CI/CD")
         
         # Mock Isolation Forest
         from sklearn.ensemble import IsolationForest
         import numpy as np
         
-        # Créer un mock du modèle Isolation Forest
+        # Creer un mock du modele Isolation Forest
         self.iso_model = IsolationForest(contamination=0.1, random_state=42)
-        # Entraîner sur des données factices
+        # Entrainer sur des donnees factices
         X_dummy = np.random.randn(100, 12)
         self.iso_model.fit(X_dummy)
         
@@ -146,23 +146,23 @@ class ModelLoader:
             'THRESHOLD': 0.0051
         }
         
-        print("✅ Modèles simulés créés avec succès")
+        print("OK - Modeles simules crees avec succes")
     
     def get_anomaly_score(self, features):
         """Get anomaly score from Isolation Forest"""
         if hasattr(self, 'iso_model'):
             score = -self.iso_model.decision_function(features)[0]
             return float(score)
-        return 0.0  # Valeur par défaut pour les tests
+        return 0.0  # Valeur par defaut pour les tests
     
     def predict_rul(self, sequence):
         """Predict RUL from sensor sequence"""
         if hasattr(self, 'lstm_model'):
             pred = self.lstm_model.predict(sequence, verbose=0)[0][0]
             return float(max(0, pred))
-        return 100.0  # Valeur par défaut pour les tests
+        return 100.0  # Valeur par defaut pour les tests
 
-# Fonction pour récupérer l'instance
+# Fonction pour recuperer l'instance
 def get_models():
     """Get or create ModelLoader instance."""
     return ModelLoader()
