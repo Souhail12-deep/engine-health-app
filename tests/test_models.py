@@ -1,4 +1,4 @@
-"""Tests pour valider la performance des modèles ML"""
+"""Tests pour valider la performance des modèles ML - VERSION CI/CD"""
 import pytest
 import sys
 import os
@@ -7,59 +7,49 @@ import pandas as pd
 import pickle
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Désactiver le mode test
-os.environ['PYTEST_CURRENT_TEST'] = 'false'
-
 from services.model_loader import get_models
 from services.preprocessing_service import PreprocessingService
 from config import ANOMALY_THRESHOLDS, RUL_THRESHOLDS, SELECTED_SENSORS
 
-# Chemin absolu vers les données de test
-DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'test', 'scenario_windows.pkl')
+# Détection de l'environnement CI/CD
+IN_CI = os.environ.get('CI') == 'true'
 
-# Vérifier la présence des données au niveau module
-_DATA_AVAILABLE = os.path.exists(DATA_FILE)
+# En CI/CD, on ne teste que le chargement des modèles
+if IN_CI:
+    print("��� Mode CI/CD détecté - tests des prédictions ignorés")
 
-if not _DATA_AVAILABLE:
-    print(f"⚠️ Données de test non trouvées: {DATA_FILE}")
-    print("⚠️ Les tests dépendant des données seront ignorés")
-
-@pytest.fixture(scope="session")
-def test_data():
-    """Charge les données de test si disponibles"""
-    if not _DATA_AVAILABLE:
-        pytest.skip("Données de test non disponibles")
-    
-    with open(DATA_FILE, 'rb') as f:
-        data = pickle.load(f)
-    
-    df = pd.DataFrame(data)
-    print(f"✅ Données chargées: {len(df)} échantillons")
-    return df
-
-@pytest.fixture(scope="module")
-def models():
-    """Charge les modèles pour les tests"""
-    return get_models()
-
-def test_anomaly_model_loading(models):
+def test_anomaly_model_loading():
     """Test que le modèle d'anomalie se charge"""
+    models = get_models()
     assert models.iso_model is not None
     assert models.iso_scaler is not None
 
-def test_rul_model_loading(models):
+def test_rul_model_loading():
     """Test que le modèle RUL se charge"""
+    models = get_models()
     assert models.lstm_model is not None
     assert models.rul_scaler is not None
 
-@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
-def test_anomaly_prediction(models, test_data):
-    """Test les prédictions d'anomalie"""
+@pytest.mark.skipif(IN_CI, reason="Skip en CI/CD - données non disponibles")
+def test_anomaly_prediction():
+    """Test les prédictions d'anomalie - UNIQUEMENT EN LOCAL"""
+    models = get_models()
+    
+    # Charger les données
+    data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'test', 'scenario_windows.pkl')
+    if not os.path.exists(data_file):
+        pytest.skip("Données de test non trouvées")
+    
+    with open(data_file, 'rb') as f:
+        data = pickle.load(f)
+    
+    df = pd.DataFrame(data)
+    
     scores = []
-    n_samples = min(5, len(test_data))
+    n_samples = min(5, len(df))
     
     for i in range(n_samples):
-        sample = test_data.iloc[i]
+        sample = df.iloc[i]
         window = sample['sensor_window']
         window_df = pd.DataFrame(window, columns=SELECTED_SENSORS)
         
@@ -78,14 +68,26 @@ def test_anomaly_prediction(models, test_data):
     assert len(scores) == n_samples
     assert all(isinstance(s, float) for s in scores)
 
-@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
-def test_rul_prediction(models, test_data):
-    """Test les prédictions RUL"""
+@pytest.mark.skipif(IN_CI, reason="Skip en CI/CD - données non disponibles")
+def test_rul_prediction():
+    """Test les prédictions RUL - UNIQUEMENT EN LOCAL"""
+    models = get_models()
+    
+    # Charger les données
+    data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'test', 'scenario_windows.pkl')
+    if not os.path.exists(data_file):
+        pytest.skip("Données de test non trouvées")
+    
+    with open(data_file, 'rb') as f:
+        data = pickle.load(f)
+    
+    df = pd.DataFrame(data)
+    
     predictions = []
-    n_samples = min(5, len(test_data))
+    n_samples = min(5, len(df))
     
     for i in range(n_samples):
-        sample = test_data.iloc[i]
+        sample = df.iloc[i]
         window = sample['sensor_window']
         window_df = pd.DataFrame(window, columns=SELECTED_SENSORS)
         
@@ -104,14 +106,26 @@ def test_rul_prediction(models, test_data):
     assert len(predictions) == n_samples
     assert all(p >= 0 for p in predictions)
 
-@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
-def test_anomaly_thresholds(models, test_data):
-    """Test la distribution des statuts d'anomalie"""
-    n_samples = min(20, len(test_data))
+@pytest.mark.skipif(IN_CI, reason="Skip en CI/CD - données non disponibles")
+def test_anomaly_thresholds():
+    """Test la distribution des statuts d'anomalie - UNIQUEMENT EN LOCAL"""
+    models = get_models()
+    
+    # Charger les données
+    data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'test', 'scenario_windows.pkl')
+    if not os.path.exists(data_file):
+        pytest.skip("Données de test non trouvées")
+    
+    with open(data_file, 'rb') as f:
+        data = pickle.load(f)
+    
+    df = pd.DataFrame(data)
+    
+    n_samples = min(20, len(df))
     normal = warning = critical = 0
     
     for i in range(n_samples):
-        sample = test_data.iloc[i]
+        sample = df.iloc[i]
         window = sample['sensor_window']
         window_df = pd.DataFrame(window, columns=SELECTED_SENSORS)
         
@@ -135,14 +149,26 @@ def test_anomaly_thresholds(models, test_data):
     
     assert total == n_samples
 
-@pytest.mark.skipif(not _DATA_AVAILABLE, reason="Données de test non disponibles")
-def test_rul_thresholds(models, test_data):
-    """Test la distribution des statuts RUL"""
-    n_samples = min(20, len(test_data))
+@pytest.mark.skipif(IN_CI, reason="Skip en CI/CD - données non disponibles")
+def test_rul_thresholds():
+    """Test la distribution des statuts RUL - UNIQUEMENT EN LOCAL"""
+    models = get_models()
+    
+    # Charger les données
+    data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'test', 'scenario_windows.pkl')
+    if not os.path.exists(data_file):
+        pytest.skip("Données de test non trouvées")
+    
+    with open(data_file, 'rb') as f:
+        data = pickle.load(f)
+    
+    df = pd.DataFrame(data)
+    
+    n_samples = min(20, len(df))
     normal = warning = critical = 0
     
     for i in range(n_samples):
-        sample = test_data.iloc[i]
+        sample = df.iloc[i]
         window = sample['sensor_window']
         window_df = pd.DataFrame(window, columns=SELECTED_SENSORS)
         
