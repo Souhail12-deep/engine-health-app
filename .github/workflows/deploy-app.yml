@@ -32,9 +32,9 @@ jobs:
     - name: Download test data
       run: |
         mkdir -p data/test
-        echo "Ì≥• Downloading test data from S3..."
-        aws s3 cp s3://engine-health-models-20260304-112538-28227/models/scenario_windows.pkl data/test/ || echo "‚ö†Ô∏è Warning: Test data not found"
-        echo "Ì≥Å Test data directory:"
+        echo "Downloading test data from S3..."
+        aws s3 cp s3://engine-health-models-20260304-112538-28227/models/scenario_windows.pkl data/test/ || echo "Warning: Test data not found"
+        echo "Test data directory:"
         ls -la data/test/ || echo "Empty directory"
 
     - name: Set up Python
@@ -126,4 +126,4 @@ jobs:
     
     - name: Dispatch Info
       run: |
-        echo "‚úÖ Infrastructure pipeline triggered with image tag: ${{ needs.build-and-push.outputs.image_tag }}"
+        echo "Infrastructure pipeline triggered with image tag: ${{ needs.build-and-push.outputs.image_tag }}"
