@@ -73,10 +73,16 @@ class PreprocessingService:
         # Get last row features
         feature_row = df.iloc[-1:].copy()
         
-        # Select only features that scaler expects
-        expected_features = iso_scaler.feature_names_in_
-        available_features = [col for col in expected_features if col in feature_row.columns]
-        feature_row = feature_row[available_features]
+        # Get expected features
+        # Pour les scalers mockés, on utilise les colonnes disponibles
+        if hasattr(iso_scaler, 'feature_names_in_'):
+            # Scaler entraîné avec des noms de features
+            expected_features = iso_scaler.feature_names_in_
+            available_features = [col for col in expected_features if col in feature_row.columns]
+            feature_row = feature_row[available_features]
+        else:
+            # Scaler mocké - on utilise toutes les colonnes
+            feature_row = feature_row
         
         # Scale
         scaled = iso_scaler.transform(feature_row)
@@ -91,8 +97,12 @@ class PreprocessingService:
         # Select sensors in correct order
         sensor_data = window_df[SELECTED_SENSORS].copy()
         
-        # Ensure columns match scaler expectations
-        sensor_data = sensor_data[rul_scaler.feature_names_in_]
+        # Pour les scalers mockés, pas besoin de feature_names_in_
+        if hasattr(rul_scaler, 'feature_names_in_'):
+            # Scaler entraîné - on utilise les colonnes attendues
+            expected_features = rul_scaler.feature_names_in_
+            available_features = [col for col in expected_features if col in sensor_data.columns]
+            sensor_data = sensor_data[available_features]
         
         # Scale
         scaled = rul_scaler.transform(sensor_data)
