@@ -14,116 +14,376 @@ env:
   ECR_REPOSITORY: engine-health-app
 
 jobs:
-  test:
-    name: Run Tests
+  # ==================== STAGE 1: SETUP ====================
+  setup:
+    name: Setup Environment
     runs-on: ubuntu-latest
+    outputs:
+      python_version: ${{ steps.python-version.outputs.version }}
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+    
+    - name: Set Python version
+      id: python-version
+      run: echo "version=3.11" >> $GITHUB_OUTPUT
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
+  # ==================== STAGE 2: INSTALL DEPENDENCIES ====================
+  install-dependencies:
+    name: Install Dependencies
+    runs-on: ubuntu-latest
+    needs: setup
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ needs.setup.outputs.python_version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r app/requirements.txt
+        pip install pytest pytest-cov flake8
+    
+    - name: Cache installed packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+    
+    - name: Verify installations
+      run: |
+        pip list | grep -E "flask|pytest|tensorflow|scikit-learn"
+
+  # ==================== STAGE 3: CODE QUALITY ====================
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    needs: install-dependencies
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ needs.setup.outputs.python_version }}
+    
+    - name: Restore pip cache
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+    
+    - name: Run flake8 linting
+      run: |
+        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # ==================== STAGE 4: PREPARE TEST DATA ====================
+  prepare-test-data:
+    name: Prepare Test Data
+    runs-on: ubuntu-latest
+    needs: setup
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-
-    - name: Download test data
+    
+    - name: Download test data from S3
       run: |
         mkdir -p data/test
         echo "Downloading test data from S3..."
         aws s3 cp s3://engine-health-models-20260304-112538-28227/models/scenario_windows.pkl data/test/ || echo "Warning: Test data not found"
         echo "Test data directory:"
         ls -la data/test/ || echo "Empty directory"
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r app/requirements.txt
-        pip install pytest pytest-cov flake8
-
-    - name: Lint with flake8
-      run: |
-        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 app/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Test with pytest
-      run: |
-        PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/ -v --cov=app --cov-report=xml
-
-    - name: Upload coverage reports
-      if: always()
-      uses: codecov/codecov-action@v3
-      with:
-        files: ./coverage.xml
-        flags: unittests
-        fail_ci_if_error: false
-
-  build-and-push:
-    name: Build and Push Docker Image
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
-    outputs:
-      image_tag: ${{ steps.set_tag.outputs.tag }}
+    - name: Upload test data as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-data
+        path: data/test/
+        retention-days: 1
 
+  # ==================== STAGE 5: UNIT TESTS ====================
+  unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    needs: [install-dependencies, prepare-test-data]
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ needs.setup.outputs.python_version }}
+    
+    - name: Download test data
+      uses: actions/download-artifact@v3
+      with:
+        name: test-data
+        path: data/test/
+    
+    - name: Restore pip cache
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+    
+    - name: Run pytest with coverage
+      run: |
+        PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v3
+      with:
+        name: coverage-report
+        path: coverage.xml
+        retention-days: 7
 
+  # ==================== STAGE 6: ENDPOINT TESTS ====================
+  endpoint-tests:
+    name: Run Endpoint Tests
+    runs-on: ubuntu-latest
+    needs: [install-dependencies, prepare-test-data]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ needs.setup.outputs.python_version }}
+    
+    - name: Download test data
+      uses: actions/download-artifact@v3
+      with:
+        name: test-data
+        path: data/test/
+    
+    - name: Restore pip cache
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+    
+    - name: Start Flask app in background
+      run: |
+        python app/app.py &
+        sleep 5
+        echo "Flask app started"
+    
+    - name: Test /health endpoint
+      run: |
+        curl -f http://localhost:5000/health || exit 1
+        echo "✅ /health endpoint OK"
+    
+    - name: Test /predict endpoint
+      run: |
+        curl -f -X POST http://localhost:5000/predict \
+          -H "Content-Type: application/json" \
+          -d '{"sensor_data": [1.0, 2.0, 3.0]}' || exit 1
+        echo "✅ /predict endpoint OK"
+    
+    - name: Test / endpoint (UI)
+      run: |
+        curl -f http://localhost:5000/ | grep -q "Engine Health" || exit 1
+        echo "✅ UI endpoint OK"
+
+  # ==================== STAGE 7: MODEL TESTS ====================
+  model-tests:
+    name: Run Model Tests
+    runs-on: ubuntu-latest
+    needs: [install-dependencies, prepare-test-data]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ needs.setup.outputs.python_version }}
+    
+    - name: Download test data
+      uses: actions/download-artifact@v3
+      with:
+        name: test-data
+        path: data/test/
+    
+    - name: Restore pip cache
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
+    
+    - name: Test model loading
+      run: |
+        python -c "from services.model_loader import ModelLoader; loader = ModelLoader(); print('✅ Models loaded successfully')"
+    
+    - name: Test inference
+      run: |
+        python -c "
+        from services.inference_service import InferenceService
+        service = InferenceService()
+        result = service.predict([1.0, 2.0, 3.0])
+        assert result is not None
+        print('✅ Inference test passed')
+        "
+
+  # ==================== STAGE 8: BUILD DOCKER IMAGE ====================
+  build-image:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [unit-tests, endpoint-tests, model-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.set_tag.outputs.tag }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
     - name: Set image tag
       id: set_tag
       run: echo "tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
+    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} .
+        docker tag ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} ${{ env.ECR_REPOSITORY }}:latest
+    
+    - name: Save Docker image as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: docker-image
+        path: /tmp/docker-image.tar
+        retention-days: 1
+    
+    - name: Image info
+      run: |
+        echo "✅ Image built with tag: ${{ steps.set_tag.outputs.tag }}"
+        docker images | grep ${{ env.ECR_REPOSITORY }}
 
+  # ==================== STAGE 9: PUSH TO ECR ====================
+  push-to-ecr:
+    name: Push to Amazon ECR
+    runs-on: ubuntu-latest
+    needs: build-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
-
-    - name: Build, tag, and push image to Amazon ECR
+    
+    - name: Pull image from artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: |
+        docker load < /tmp/docker-image.tar || true
+        # If artifact loading fails, rebuild and push
+        if [ $? -ne 0 ]; then
+          docker build -t ${{ env.ECR_REPOSITORY }}:${{ needs.build-image.outputs.image_tag }} .
+          docker tag ${{ env.ECR_REPOSITORY }}:${{ needs.build-image.outputs.image_tag }} ${{ env.ECR_REPOSITORY }}:latest
+        fi
+    
+    - name: Push to ECR
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ steps.set_tag.outputs.tag }}
+        IMAGE_TAG: ${{ needs.build-image.outputs.image_tag }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker tag ${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        docker tag ${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+        docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+        echo "✅ Image pushed to ECR: $IMAGE_TAG"
 
-    - name: Image digest
-      run: echo "Image pushed with tag ${{ steps.set_tag.outputs.tag }}"
-
+  # ==================== STAGE 10: TRIGGER INFRASTRUCTURE ====================
   trigger-infra:
     name: Trigger Infrastructure Deployment
-    needs: build-and-push
     runs-on: ubuntu-latest
+    needs: push-to-ecr
     if: github.ref == 'refs/heads/main'
     
     steps:
     - name: Wait for ECR to be ready
       run: sleep 30
     
-    - name: Repository Dispatch
+    - name: Repository Dispatch to Infrastructure
       uses: peter-evans/repository-dispatch@v2
       with:
         token: ${{ secrets.GH_PAT }}
         repository: Souhail12-deep/engine-health-infra
         event-type: new-app-version
-        client-payload: '{"image_tag": "${{ needs.build-and-push.outputs.image_tag }}"}'
+        client-payload: '{"image_tag": "${{ needs.build-image.outputs.image_tag }}"}'
     
     - name: Dispatch Info
       run: |
-        echo "Infrastructure pipeline triggered with image tag: ${{ needs.build-and-push.outputs.image_tag }}"
+        echo "========================================="
+        echo "✅ Infrastructure pipeline triggered"
+        echo "   Image tag: ${{ needs.build-image.outputs.image_tag }}"
+        echo "   Repository: engine-health-infra"
+        echo "========================================="
+
+  # ==================== STAGE 11: UPLOAD COVERAGE (Optional) ====================
+  upload-coverage:
+    name: Upload Coverage Reports
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: always()
+    
+    steps:
+    - name: Download coverage report
+      uses: actions/download-artifact@v3
+      with:
+        name: coverage-report
+    
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        flags: unittests
+        fail_ci_if_error: false
