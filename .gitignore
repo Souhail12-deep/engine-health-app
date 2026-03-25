@@ -41,3 +41,5 @@ ENV/
 *.pem.txtterraform/terraform.tfvars
 terraform/
 scripts/
+*.tfstate
+*.tfstate.*
