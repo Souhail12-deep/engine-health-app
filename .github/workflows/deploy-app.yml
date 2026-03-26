@@ -245,7 +245,11 @@ jobs:
         token: ${{ secrets.GH_PAT }}
         repository: Souhail12-deep/engine-health-infra
         event-type: new-app-version
-        client-payload: '{"image_tag": "${{ needs.build-image.outputs.image_tag }}", "environment": "${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}"}'
+        client-payload: |
+          {
+            "image_tag": "${{ needs.build-image.outputs.image_tag }}",
+            "environment": "${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}"
+          }
     
     - name: Dispatch Info
       run: |
