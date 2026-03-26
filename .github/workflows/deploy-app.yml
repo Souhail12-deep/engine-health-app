@@ -91,7 +91,6 @@ jobs:
       run: |
         mkdir -p models/anodet_models
         mkdir -p models/rul_models
-        # Create placeholder files to avoid errors
         touch models/anodet_models/isolation_forest_latest.pkl
         touch models/anodet_models/scaler_latest.pkl
         touch models/rul_models/lstm_rul_latest.keras
@@ -150,10 +149,6 @@ jobs:
         else
           echo "⚠️ /health endpoint returned $response (continuing anyway)"
         fi
-    
-    - name: Test / endpoint
-      run: |
-        curl -f http://localhost:5000/ || echo "⚠️ UI endpoint not responding (continuing)"
 
   # ==================== STAGE 6: BUILD DOCKER IMAGE ====================
   build-image:
@@ -177,6 +172,18 @@ jobs:
         docker build -t ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} .
         docker tag ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} ${{ env.ECR_REPOSITORY }}:latest
         echo "✅ Image built with tag: ${{ steps.set_tag.outputs.tag }}"
+    
+    - name: Save Docker image to file
+      run: |
+        docker save ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} -o /tmp/docker-image.tar
+        echo "✅ Image saved to /tmp/docker-image.tar"
+    
+    - name: Upload Docker image as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-image
+        path: /tmp/docker-image.tar
+        retention-days: 1
 
   # ==================== STAGE 7: PUSH TO ECR ====================
   push-to-ecr:
@@ -186,6 +193,18 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     
     steps:
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image
+        path: /tmp
+    
+    - name: Load Docker image
+      run: |
+        docker load < /tmp/docker-image.tar
+        echo "✅ Docker image loaded"
+        docker images | grep ${{ env.ECR_REPOSITORY }}
+    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -202,6 +221,7 @@ jobs:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ needs.build-image.outputs.image_tag }}
       run: |
+        echo "Pushing image with tag: $IMAGE_TAG"
         docker tag ${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker tag ${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
