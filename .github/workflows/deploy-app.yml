@@ -239,32 +239,21 @@ jobs:
     - name: Wait for ECR to be ready
       run: sleep 30
     
-    - name: Determine target repository
-      id: target
-      run: |
-        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-          echo "repo=Souhail12-deep/engine-health-infra" >> $GITHUB_OUTPUT
-          echo "env=PROD" >> $GITHUB_OUTPUT
-        else
-          echo "repo=Souhail12-deep/engine-health-infra-dev" >> $GITHUB_OUTPUT
-          echo "env=DEV" >> $GITHUB_OUTPUT
-        fi
-    
-    - name: Repository Dispatch
+    - name: Repository Dispatch to Infrastructure
       uses: peter-evans/repository-dispatch@v3
       with:
         token: ${{ secrets.GH_PAT }}
-        repository: ${{ steps.target.outputs.repo }}
+        repository: Souhail12-deep/engine-health-infra
         event-type: new-app-version
-        client-payload: '{"image_tag": "${{ needs.build-image.outputs.image_tag }}"}'
+        client-payload: '{"image_tag": "${{ needs.build-image.outputs.image_tag }}", "environment": "${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}"}'
     
     - name: Dispatch Info
       run: |
         echo "========================================="
         echo "✅ Infrastructure pipeline triggered"
-        echo "   Environment: ${{ steps.target.outputs.env }}"
+        echo "   Branch: ${{ github.ref_name }}"
         echo "   Image tag: ${{ needs.build-image.outputs.image_tag }}"
-        echo "   Repository: ${{ steps.target.outputs.repo }}"
+        echo "   Repository: engine-health-infra"
         echo "========================================="
 
   # ==================== STAGE 9: UPLOAD COVERAGE ====================
