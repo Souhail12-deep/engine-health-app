@@ -57,11 +57,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r app/requirements.txt
-        pip install pytest pytest-cov flake8 numpy flask joblib scikit-learn
+        pip install pytest pytest-cov pytest-mock flake8 numpy flask joblib scikit-learn
     
     - name: Verify installations
       run: |
-        python -c "import flask, numpy, joblib; print('✅ Core dependencies OK')"
+        python -c "import flask, numpy, joblib, sklearn; print('✅ Core dependencies OK')"
         pytest --version
         echo "✅ All dependencies installed"
 
@@ -123,30 +123,45 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install numpy
         pip install -r app/requirements.txt
-        pip install pytest pytest-cov flake8 joblib
+        pip install pytest pytest-cov pytest-mock flake8 numpy joblib scikit-learn
         echo "✅ Dependencies installed"
     
-    - name: Verify installations
+    - name: Create valid mock models
       run: |
-        python -c "import numpy; print('✅ numpy OK')"
-        python -c "import pytest; print('✅ pytest OK')"
-    
-    - name: Create mock models
-      run: |
-        mkdir -p models/anodet_models
-        mkdir -p models/rul_models
-        touch models/anodet_models/isolation_forest_latest.pkl
-        touch models/anodet_models/scaler_latest.pkl
-        touch models/rul_models/lstm_rul_latest.keras
-        touch models/rul_models/minmax_scaler_latest.pkl
-        touch models/anodet_models/model_params_latest.pkl
-        echo "✅ Mock models created"
+        mkdir -p models/anodet_models models/rul_models
+        
+        python -c '
+        import joblib
+        import numpy as np
+        from sklearn.ensemble import IsolationForest
+        import tensorflow as tf
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense
+        
+        # Mock Isolation Forest
+        iso_model = IsolationForest(random_state=42, n_estimators=10)
+        joblib.dump(iso_model, "models/anodet_models/isolation_forest_latest.pkl")
+        
+        # Mock scaler
+        scaler = joblib.dump(np.array([0, 1]), "models/anodet_models/scaler_latest.pkl")
+        
+        # Mock model params
+        joblib.dump({"param": 42}, "models/anodet_models/model_params_latest.pkl")
+        
+        # Mock LSTM .keras (simple dummy model)
+        model = Sequential([LSTM(10, input_shape=(10, 5)), Dense(1)])
+        model.save("models/rul_models/lstm_rul_latest.keras")
+        
+        # Mock minmax scaler
+        joblib.dump({"min": 0, "max": 1}, "models/rul_models/minmax_scaler_latest.pkl")
+        
+        print("✅ Valid mock models created")
+        '
     
     - name: Run unit tests
       run: |
-        PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_app.py -v --cov=app --cov-report=xml --tb=short
+        PYTHONPATH=$(pwd) pytest tests/test_app.py -v --cov=app --cov-report=xml --tb=short -q
     
     - name: Upload coverage report
       if: always()
@@ -177,15 +192,26 @@ jobs:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
     
-    - name: Create mock models
+    - name: Create valid mock models
       run: |
-        mkdir -p models/anodet_models
-        mkdir -p models/rul_models
-        touch models/anodet_models/isolation_forest_latest.pkl
-        touch models/anodet_models/scaler_latest.pkl
-        touch models/rul_models/lstm_rul_latest.keras
-        touch models/rul_models/minmax_scaler_latest.pkl
-        touch models/anodet_models/model_params_latest.pkl
+        mkdir -p models/anodet_models models/rul_models
+        python -c '
+        import joblib
+        import numpy as np
+        from sklearn.ensemble import IsolationForest
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense
+        
+        iso = IsolationForest(random_state=42, n_estimators=5)
+        joblib.dump(iso, "models/anodet_models/isolation_forest_latest.pkl")
+        joblib.dump(np.array([0,1]), "models/anodet_models/scaler_latest.pkl")
+        joblib.dump({"param": 42}, "models/anodet_models/model_params_latest.pkl")
+        
+        model = Sequential([LSTM(8, input_shape=(5, 3)), Dense(1)])
+        model.save("models/rul_models/lstm_rul_latest.keras")
+        joblib.dump({"min":0,"max":1}, "models/rul_models/minmax_scaler_latest.pkl")
+        print("✅ Mock models ready for import test")
+        '
     
     - name: Test model imports
       run: |
@@ -193,10 +219,13 @@ jobs:
         import sys
         sys.path.insert(0, '.')
         try:
-            from services.model_loader import ModelLoader
-            print('✅ ModelLoader imported')
-        except ImportError as e:
-            print(f'⚠️ ModelLoader import warning: {e}')
+            from services.model_loader import get_models, ModelLoader
+            models = get_models()
+            print('✅ ModelLoader and get_models() successful')
+            print('Loaded models:', list(models.__dict__.keys()) if hasattr(models, '__dict__') else 'OK')
+        except Exception as e:
+            print(f'⚠️ ModelLoader error: {e}')
+            raise
         "
 
   # ==================== STAGE 6: ENDPOINT TESTS ====================
@@ -220,62 +249,55 @@ jobs:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
     
-    - name: Install Flask test dependencies
+    - name: Install dependencies
       run: |
-        pip install flask
-        echo "✅ Flask installed"
+        pip install -r app/requirements.txt flask
     
-    - name: Create mock models
+    - name: Create valid mock models
       run: |
-        mkdir -p models/anodet_models
-        mkdir -p models/rul_models
-        touch models/anodet_models/isolation_forest_latest.pkl
-        touch models/anodet_models/scaler_latest.pkl
-        touch models/rul_models/lstm_rul_latest.keras
-        touch models/rul_models/minmax_scaler_latest.pkl
-        touch models/anodet_models/model_params_latest.pkl
+        mkdir -p models/anodet_models models/rul_models
+        python -c '
+        import joblib
+        import numpy as np
+        from sklearn.ensemble import IsolationForest
+        from tensorflow.keras.models import Sequential
+        from tensorflow.keras.layers import LSTM, Dense
+        iso = IsolationForest(random_state=42, n_estimators=5)
+        joblib.dump(iso, "models/anodet_models/isolation_forest_latest.pkl")
+        joblib.dump(np.array([0,1]), "models/anodet_models/scaler_latest.pkl")
+        joblib.dump({"param": 42}, "models/anodet_models/model_params_latest.pkl")
+        model = Sequential([LSTM(8, input_shape=(5, 3)), Dense(1)])
+        model.save("models/rul_models/lstm_rul_latest.keras")
+        joblib.dump({"min":0,"max":1}, "models/rul_models/minmax_scaler_latest.pkl")
+        print("✅ Mock models created")
+        '
     
-    - name: Start Flask app
+    - name: Start Flask app (background)
       run: |
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        python app/app.py > flask.log 2>&1 &
-        sleep 20
-        echo "Flask app started"
+        export PYTHONPATH=$(pwd)
+        nohup python app/app.py > flask.log 2>&1 &
+        echo $! > flask.pid
+        sleep 15
+        echo "✅ Flask app started in background"
     
-    - name: Test /health endpoint
+    - name: Test endpoints
       run: |
-        for i in {1..15}; do
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health 2>/dev/null || echo "000")
-          if [ "$response" = "200" ]; then
-            echo "✅ /health endpoint OK"
-            exit 0
-          fi
-          echo "Waiting for app... ($i/15)"
-          sleep 2
+        for endpoint in "/health" "/"; do
+          for i in {1..10}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000${endpoint} || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "✅ $endpoint → 200 OK"
+              break
+            fi
+            sleep 2
+          done
         done
-        echo "⚠️ /health endpoint not responding - continuing"
-    
-    - name: Test UI endpoint
-      run: |
-        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/ 2>/dev/null || echo "000")
-        if [ "$response" = "200" ]; then
-          echo "✅ UI endpoint OK"
-        else
-          echo "⚠️ UI endpoint returned $response"
-        fi
-    
-    - name: Test /predict endpoint
-      run: |
-        response=$(curl -s -X POST http://localhost:5000/predict \
-          -H "Content-Type: application/json" \
-          -d '{"sensor_data": [1.0, 2.0, 3.0, 4.0, 5.0]}' \
-          -w "%{http_code}" -o /dev/null 2>/dev/null || echo "000")
         
-        if [ "$response" = "200" ]; then
-          echo "✅ /predict endpoint OK"
-        else
-          echo "⚠️ /predict endpoint returned $response"
-        fi
+        # Simple predict test
+        code=$(curl -s -X POST -H "Content-Type: application/json" \
+          -d '{"sensor_data": [1.0,2.0,3.0,4.0,5.0]}' \
+          -w "%{http_code}" -o /dev/null http://localhost:5000/predict || echo "000")
+        echo "Predict endpoint returned: $code"
 
   # ==================== STAGE 7: BUILD DOCKER IMAGE ====================
   build-image:
@@ -298,8 +320,8 @@ jobs:
       run: |
         docker build -t ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} .
         docker tag ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} ${{ env.ECR_REPOSITORY }}:latest
-        echo "✅ Image built with tag: ${{ steps.set_tag.outputs.tag }}"
-    
+        echo "✅ Image built"
+
     - name: Save Docker image
       run: docker save ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} -o /tmp/docker-image.tar
     
@@ -347,7 +369,7 @@ jobs:
         docker tag ${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
-        echo "✅ Image pushed to ECR: $IMAGE_TAG"
+        echo "✅ Image pushed"
 
   # ==================== STAGE 9: TRIGGER INFRASTRUCTURE ====================
   trigger-infra:
@@ -357,7 +379,7 @@ jobs:
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     
     steps:
-    - name: Wait for ECR to be ready
+    - name: Wait for ECR
       run: sleep 30
     
     - name: Determine environment
@@ -380,15 +402,6 @@ jobs:
             "image_tag": "${{ needs.build-image.outputs.image_tag }}",
             "environment": "${{ steps.env.outputs.env }}"
           }
-    
-    - name: Dispatch Info
-      run: |
-        echo "========================================="
-        echo "✅ Infrastructure pipeline triggered"
-        echo "   Branch: ${{ github.ref_name }}"
-        echo "   Environment: ${{ steps.env.outputs.env }}"
-        echo "   Image tag: ${{ needs.build-image.outputs.image_tag }}"
-        echo "========================================="
 
   # ==================== STAGE 10: UPLOAD COVERAGE ====================
   upload-coverage:
