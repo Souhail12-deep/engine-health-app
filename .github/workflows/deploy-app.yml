@@ -2,18 +2,12 @@ name: Deploy Application
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [ main, develop ]
     paths-ignore:
       - 'README.md'
       - '.gitignore'
   pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
-      - '.gitignore'
+    branches: [ main, develop ]
   workflow_dispatch:
 
 env:
@@ -21,7 +15,6 @@ env:
   ECR_REPOSITORY: engine-health-app
 
 jobs:
-  # ==================== SETUP & TESTS (Always run) ====================
   setup:
     name: Setup Environment
     runs-on: ubuntu-latest
@@ -62,11 +55,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r app/requirements.txt
-        pip install pytest pytest-cov flake8 numpy flask joblib scikit-learn
+        pip install pytest pytest-cov pytest-mock flake8 numpy flask joblib scikit-learn
     
     - name: Verify installations
       run: |
-        python -c "import flask, numpy, joblib; print('✅ Core dependencies OK')"
+        python -c "import flask, numpy, joblib, sklearn; print('✅ Core dependencies OK')"
         pytest --version
         echo "✅ All dependencies installed"
 
@@ -91,15 +84,11 @@ jobs:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('app/requirements.txt') }}
     
-    - name: Run flake8 - Critical errors only
+    - name: Run flake8
       run: |
         pip install flake8
-        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics || echo "⚠️ Critical errors found but not blocking"
-    
-    - name: Run flake8 - Style warnings
-      run: |
+        flake8 app/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
         flake8 app/ --count --exit-zero --max-complexity=20 --max-line-length=127 --statistics
-        echo "⚠️ Style warnings logged"
 
   unit-tests:
     name: Run Unit Tests
@@ -123,7 +112,8 @@ jobs:
     
     - name: Install test dependencies
       run: |
-        pip install pytest pytest-cov numpy
+        pip install -r app/requirements.txt
+        pip install pytest pytest-cov pytest-mock numpy joblib
     
     - name: Create mock models
       run: |
@@ -178,6 +168,7 @@ jobs:
     - name: Install model dependencies
       run: |
         pip install joblib numpy scikit-learn
+        echo "✅ Model dependencies installed"
     
     - name: Create mock models
       run: |
@@ -264,35 +255,11 @@ jobs:
         curl -f http://localhost:5000/ || echo "UI check passed"
         echo "✅ Endpoint tests completed"
 
-  # ==================== DEPLOYMENT JOBS (ONLY on main push or manual trigger) ====================
-  should-deploy:
-    name: Check if deployment is needed
-    runs-on: ubuntu-latest
-    outputs:
-      deploy: ${{ steps.check.outputs.deploy }}
-    steps:
-    - name: Check deployment condition
-      id: check
-      run: |
-        # Deploy only on:
-        # 1. Push to main branch
-        # 2. Manual workflow_dispatch
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "deploy=true" >> $GITHUB_OUTPUT
-          echo "Manual trigger - will deploy"
-        elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-          echo "deploy=true" >> $GITHUB_OUTPUT
-          echo "Push to main - will deploy"
-        else
-          echo "deploy=false" >> $GITHUB_OUTPUT
-          echo "Push to develop or PR - tests only, no deployment"
-        fi
-
   build-image:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [unit-tests, model-tests, endpoint-tests, should-deploy]
-    if: needs.should-deploy.outputs.deploy == 'true'
+    needs: [unit-tests, model-tests, endpoint-tests]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     outputs:
       image_tag: ${{ steps.set_tag.outputs.tag }}
     
@@ -308,7 +275,7 @@ jobs:
       run: |
         docker build -t ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} .
         docker tag ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} ${{ env.ECR_REPOSITORY }}:latest
-        echo "✅ Image built with tag: ${{ steps.set_tag.outputs.tag }}"
+        echo "✅ Image built"
     
     - name: Save Docker image
       run: docker save ${{ env.ECR_REPOSITORY }}:${{ steps.set_tag.outputs.tag }} -o /tmp/docker-image.tar
@@ -323,8 +290,8 @@ jobs:
   push-to-ecr:
     name: Push to Amazon ECR
     runs-on: ubuntu-latest
-    needs: [build-image, should-deploy]
-    if: needs.should-deploy.outputs.deploy == 'true'
+    needs: build-image
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     
     steps:
     - name: Download Docker image
@@ -356,17 +323,26 @@ jobs:
         docker tag ${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
-        echo "✅ Image pushed to ECR: $IMAGE_TAG"
+        echo "✅ Image pushed"
 
   trigger-infra:
     name: Trigger Infrastructure Deployment
     runs-on: ubuntu-latest
-    needs: [push-to-ecr, should-deploy]
-    if: needs.should-deploy.outputs.deploy == 'true'
+    needs: push-to-ecr
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     
     steps:
     - name: Wait for ECR
       run: sleep 30
+    
+    - name: Determine environment
+      id: env
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "env=prod" >> $GITHUB_OUTPUT
+        else
+          echo "env=dev" >> $GITHUB_OUTPUT
+        fi
     
     - name: Repository Dispatch
       uses: peter-evans/repository-dispatch@v3
@@ -377,16 +353,8 @@ jobs:
         client-payload: |
           {
             "image_tag": "${{ needs.build-image.outputs.image_tag }}",
-            "environment": "prod"
+            "environment": "${{ steps.env.outputs.env }}"
           }
-    
-    - name: Dispatch Info
-      run: |
-        echo "========================================="
-        echo "✅ Infrastructure pipeline triggered"
-        echo "   Image tag: ${{ needs.build-image.outputs.image_tag }}"
-        echo "   Repository: engine-health-infra"
-        echo "========================================="
 
   upload-coverage:
     name: Upload Coverage Reports
