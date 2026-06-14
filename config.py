@@ -7,7 +7,9 @@ ANOMALY_MODEL_PATH = os.path.join(BASE_DIR, "models", "anodet_models", "isolatio
 ANOMALY_SCALER_PATH = os.path.join(BASE_DIR, "models", "anodet_models", "scaler_latest.pkl")
 ANOMALY_PARAMS_PATH = os.path.join(BASE_DIR, "models", "anodet_models", "model_params_latest.pkl")
 
-RUL_MODEL_PATH = os.path.join(BASE_DIR, "models", "rul_models", "lstm_rul_latest.keras")
+# RUL model path – using GRU (final_ru1_model.keras)
+# Placez votre fichier final_ru1_model.keras dans le dossier models/rul_models/
+RUL_MODEL_PATH = os.path.join(BASE_DIR, "models", "rul_models", "final_ru1_model.keras")
 RUL_SCALER_PATH = os.path.join(BASE_DIR, "models", "rul_models", "minmax_scaler_latest.pkl")
 
 # Model parameters
